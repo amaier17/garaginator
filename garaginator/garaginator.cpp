@@ -1,5 +1,5 @@
 // This #include statement was automatically added by the Particle IDE.
-#include <MQTT.h>
+#include <MQTT_HASS.h>
 #include <HallEffectSI7210.h>
 
 // -----------------------------------------
@@ -10,6 +10,9 @@
 
 #include <Wire.h>
 
+// -----------------------------------------
+// Pins
+// -----------------------------------------
 int led = D7; // This is where your LED is plugged in. The other side goes to a resistor connected to GND.
 int value = 0;
 int DEV = 0x33;
@@ -25,195 +28,36 @@ int CTRL_COIL1 = D3;
 int CTRL_COIL2 = D4;
 int CTRL_COIL3 = D5;
 int CTRL_COIL4 = D6;
-
-
-char serial_num[HAL_DEVICE_SERIAL_NUMBER_SIZE + 1];
-char payload[2048];
+// -----------------------------------------
 
 // MQTT
-void callback(char *topic, byte *payload, unsigned int length);
 byte mqtt_server[] = {192, 168, 1, 3};
-MQTT client(mqtt_server, 1883, 2048, callback);
+MQTT_HASS& client = MQTT_HASS::getInstance(mqtt_server, 1883);
 String mqtt_username = "mqtt_user";
 String mqtt_password = "syj?/nl%`n&X&M6I";
 
-String binary_sensor_tamper_base    = "homeassistant/binary_sensor/particle_garaginator/tamper/";
-String sensor_he_threshold_base     = "homeassistant/sensor/particle_garaginator/he_threshold/";
-String sensor_he_value_base         = "homeassistant/sensor/particle_garaginator/he_value/";
-String sensor_wall_state_base       = "homeassistant/sensor/particle_garaginator/wall_state/";
-String cover_door_base              = "homeassistant/cover/particle_garaginator/door/";
-String lock_opener_base             = "homeassistant/lock/particle_garaginator/lock_opener/";
-String button_toggle_light_base     = "homeassistant/button/particle_garaginator/toggle_light/";
-String button_calibrate_base        = "homeassistant/button/particle_garaginator/calibrate/";
+Device dev {
+    .name = "garaginator",
+    .model = "Andrew's Argon",
+};
+
+void coverDoorCallback(char *topic, uint8_t *payload, unsigned int length);
+void lockOpenerCallback(char *topic, uint8_t *payload, unsigned int length);
+void buttonToggleLightCallback(char *topic, uint8_t *payload, unsigned int length);
+void buttonCalibrateCallback(char *topic, uint8_t *payload, unsigned int length);
+
+BinarySensor binarySensorTamper("tamper", "Tamper Sensor", client, dev, BinarySensor::DeviceClasses::tamper);
+Sensor sensorHeThreshold("heThreshold", "Hall Effect Threshold", client, dev);
+Sensor sensorHeValue("heValue", "Hall Effect Value", client, dev);
+Sensor sensorWallState("wallState", "Wall Button State", client, dev);
+Cover garageDoor("door", "Garage Door", client, dev, coverDoorCallback, Cover::DeviceClasses::garage);
+Lock lockOpener("lockOpener", "Lock Opener", client, dev, lockOpenerCallback);
+Button buttonToggleLight("buttonToggleLight", "Toggle Light", client, dev, buttonToggleLightCallback);
+Button buttonCalibrate("buttonCalibrate", "Calibrate", client, dev, buttonCalibrateCallback);
 
 void joint_print(String message) {
     Serial.println(message);
     Particle.publish(message);
-}
-
-void fill_device_json(JSONBufferWriter &writer) {
-    writer.name("device").beginObject();
-        writer.name("identifiers").beginArray();
-            writer.name("particle_garaginator");
-        writer.endArray();
-        writer.name("name").value("garaginator");
-        writer.name("manufacturer").value("Particle (via Andrew Maier)");
-        writer.name("model").value("Andrew's Argon");
-        writer.name("sw_version").value("v1.0");
-    writer.endObject();
-}
-
-void publish_disc_binary_sensor_tamper() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Tamper Sensor");
-    writer.name("state_topic").value(binary_sensor_tamper_base + "state");
-    writer.name("availability_topic").value(binary_sensor_tamper_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "tamper");
-    fill_device_json(writer);
-    writer.name("device_class").value("tamper");
-    writer.endObject();
-    
-    client.publish(binary_sensor_tamper_base + "config", payload);
-    joint_print("discovery: " + binary_sensor_tamper_base + "config");
-}
-
-void publish_disc_sensor_he_threshold() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Hall Effect Threshold");
-    writer.name("state_topic").value(sensor_he_threshold_base + "state");
-    writer.name("availability_topic").value(sensor_he_threshold_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "he_threshold");
-    fill_device_json(writer);
-    writer.endObject();
-    
-    client.publish(sensor_he_threshold_base + "config", payload);
-    joint_print("discovery: " + sensor_he_threshold_base + "config");
-}
-
-void publish_disc_sensor_he_value() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Hall Effect Value");
-    writer.name("state_topic").value(sensor_he_value_base + "state");
-    writer.name("availability_topic").value(sensor_he_value_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "he_value");
-    fill_device_json(writer);
-    writer.endObject();
-
-    client.publish(sensor_he_value_base + "config", payload);
-    joint_print("discovery: " + sensor_he_value_base + "config");
-}
-
-void publish_disc_sensor_wall_state() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Wall Button State");
-    writer.name("state_topic").value(sensor_wall_state_base + "state");
-    writer.name("availability_topic").value(sensor_wall_state_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "wall_state");
-    fill_device_json(writer);
-    writer.endObject();
-    
-    client.publish(sensor_wall_state_base + "config", payload);
-    joint_print("discovery: " + sensor_wall_state_base + "config");
-}
-
-void publish_disc_button_calibrate() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Calibrate");
-    writer.name("command_topic").value(button_calibrate_base + "command");
-    writer.name("availability_topic").value(button_calibrate_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "calibrate");
-    fill_device_json(writer);
-    writer.endObject();
-    
-    client.publish(button_calibrate_base + "config", payload);
-    joint_print("discovery: " + button_calibrate_base + "config");
-    
-    client.subscribe(button_calibrate_base + "command");
-}
-
-void publish_disc_button_toggle_light() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Toggle Light");
-    writer.name("command_topic").value(button_toggle_light_base + "command");
-    writer.name("availability_topic").value(button_toggle_light_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "toggle_light");
-    fill_device_json(writer);
-    writer.endObject();
-    
-    client.publish(button_toggle_light_base + "config", payload);
-    joint_print("discovery: " + button_toggle_light_base + "config");
-    
-    client.subscribe(button_toggle_light_base + "command");
-}
-
-void publish_disc_lock_opener() {
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Lock Opener");
-    writer.name("state_topic").value(lock_opener_base + "state");
-    writer.name("command_topic").value(lock_opener_base + "command");
-    writer.name("availability_topic").value(lock_opener_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "lock_opener");
-    fill_device_json(writer);
-    writer.endObject();
-    
-    client.publish(lock_opener_base + "config", payload);
-    joint_print("discovery: " + lock_opener_base + "config");
-    
-    client.subscribe(lock_opener_base + "command");
-}
-
-void publish_disc_cover_door() {
-    char payload[2048];
-    memset(payload, 0, sizeof(payload));
-    JSONBufferWriter writer(payload, sizeof(payload));
-    
-    writer.beginObject();
-    writer.name("name").value("Garage Door");
-    writer.name("state_topic").value(cover_door_base + "state");
-    writer.name("command_topic").value(cover_door_base + "command");
-    writer.name("availability_topic").value(cover_door_base + "availability");
-    writer.name("unique_id").value(String(serial_num) + "garage_main");
-    fill_device_json(writer);
-    writer.name("device_class").value("garage");
-    writer.name("payload_toggle").value("toggle");
-    writer.endObject();
-    
-    client.publish(cover_door_base + "config", payload);
-    joint_print("discovery: " + cover_door_base + "config");
-    
-    client.subscribe(cover_door_base + "command");
-}
-
-void publish_availability() {
-    client.publish(binary_sensor_tamper_base + "availability", "online");
-    client.publish(sensor_he_threshold_base + "availability", "online");
-    client.publish(sensor_he_value_base + "availability", "online");
-    client.publish(sensor_wall_state_base + "availability", "online");
-    client.publish(button_calibrate_base + "availability", "online");
-    client.publish(button_toggle_light_base + "availability", "online");
-    client.publish(lock_opener_base + "availability", "online");
-    client.publish(cover_door_base + "availability", "online");
 }
 
 enum EEPROMLayout : int {
@@ -232,12 +76,6 @@ int he_threshold = 5000;
 int he_value = 0;
 int wall_state = 0;
 HallEffectSI7210 hallEffect(HallEffectSI7210::Devs::SI7210_B_04_IV);
-
-void delay_us(long us) {
-    long target = micros() + us;
-    while (target - (long)micros() >= 0)
-        yield();
-}
 
 void enableBoard() {
     digitalWrite(CTRL_COIL0, HIGH);
@@ -259,13 +97,12 @@ enum ReqState : int32_t {
 
 ReqState curState = Invalid;
 
-
 bool lockDoor(String extra = "") {
-    client.publish(binary_sensor_tamper_base + "state", "OFF"); // Clear any tamper values
+    binarySensorTamper.updateState(BinarySensor::States::OFF); // Clear tamper if door is locked
     if (lockState != LockState_Locked) {
-        client.publish(lock_opener_base + "state", "LOCKING");
+        lockOpener.updateState(Lock::States::LOCKING);
         delay(1);
-        client.publish(lock_opener_base + "state", "LOCKED");
+        lockOpener.updateState(Lock::States::LOCKED);
         lockState = LockState_Locked;
     }
     enableBoard();
@@ -277,15 +114,15 @@ bool lockDoor(String extra = "") {
 }
 
 bool unlockDoor(String extra = "") {
-    client.publish(binary_sensor_tamper_base + "state", "OFF"); // Clear any tamper values
+    binarySensorTamper.updateState(BinarySensor::States::OFF); // Clear tamper if door is unlocked
     // Check if the wall still says locked (if so we can't unlock)
     if (curState == Lock)
         return true;
 
     if (lockState != LockState_Unlocked) {
-        client.publish(lock_opener_base + "state", "UNLOCKING");
+        lockOpener.updateState(Lock::States::UNLOCKING);
         delay(1);
-        client.publish(lock_opener_base + "state", "UNLOCKED");
+        lockOpener.updateState(Lock::States::UNLOCKED);
         lockState = LockState_Unlocked;
     }
     enableBoard();
@@ -297,7 +134,7 @@ bool unlockDoor(String extra = "") {
 }
 
 int toggleOverheadLight(String extra = "") {
-    client.publish(binary_sensor_tamper_base + "state", "OFF"); // Clear any tamper values
+    binarySensorTamper.updateState(BinarySensor::States::OFF); // Clear tamper if light is toggled
     enableBoard();
     digitalWrite(CTRL_COIL2, LOW);
     digitalWrite(CTRL_COIL3, LOW);
@@ -341,9 +178,9 @@ DoorState closeDoor(String extra = "") {
     if (doorState == DoorState_Closed)
         return DoorState_Closed;
 
-    client.publish(cover_door_base + "state", "closing");
+    garageDoor.updateState(Cover::States::CLOSING);
     lockDoor();
-    publish_availability();
+    client.publishAvailabilities();
     while (numRetries-- && getDoorState() != DoorState_Closed) {
         unsigned long endTime = millis() + 20000;
         activateDoor();
@@ -359,11 +196,11 @@ DoorState closeDoor(String extra = "") {
     
     doorState = getDoorState();
     if (doorState == DoorState_Closed) {
-        client.publish(cover_door_base + "state", "closed");
-        client.publish(binary_sensor_tamper_base + "state", "OFF"); // Clear tamper if door is closed from our requests
+        garageDoor.updateState(Cover::States::CLOSED);
+        binarySensorTamper.updateState(BinarySensor::States::OFF); // Clear tamper if door is closed from our requests
     } else {
-        client.publish(cover_door_base + "state", "stopped");
-        client.publish(binary_sensor_tamper_base + "state", "ON");
+        garageDoor.updateState(Cover::States::STOPPED);
+        binarySensorTamper.updateState(BinarySensor::States::ON);
     }
     
     return doorState;
@@ -374,8 +211,8 @@ DoorState openDoor(String extra = "") {
         return doorState;
 
     activateDoor();
-    client.publish(cover_door_base + "state", "opening");
-    publish_availability();
+    garageDoor.updateState(Cover::States::OPENING);
+    client.publishAvailabilities();
     unsigned long endTime = millis() + 20000;
     while (endTime > millis()) {
         yield();
@@ -384,10 +221,10 @@ DoorState openDoor(String extra = "") {
     }
     doorState = getDoorState();
     if (doorState == DoorState_Open) {
-        client.publish(cover_door_base + "state", "open");
+        garageDoor.updateState(Cover::States::OPEN);
     } else {
-        client.publish(cover_door_base + "state", "stopped");
-        client.publish(binary_sensor_tamper_base + "state", "ON");
+        garageDoor.updateState(Cover::States::STOPPED);
+        binarySensorTamper.updateState(BinarySensor::States::ON);
     }
 
     return doorState;
@@ -397,24 +234,24 @@ bool calibrateHallEffect(String extra = "") {
     int closeValue, openValue;
     joint_print("Running calibrate");
     lockDoor();
-    client.publish(cover_door_base + "state", "closing");
+    garageDoor.updateState(Cover::States::CLOSING);
     activateDoor();
     delay(20000);
     if (!hallEffect.measure(closeValue))
         goto failed;
     closeValue = abs(closeValue);
     doorState = getDoorState();
-    client.publish(cover_door_base + "state", "closed");
+    garageDoor.updateState(Cover::States::CLOSED);
 
     unlockDoor();
-    client.publish(cover_door_base + "state", "opening");
+    garageDoor.updateState(Cover::States::OPENING);
     activateDoor();
     delay(20000);
     if (!hallEffect.measure(openValue))
         goto failed;
     openValue = abs(openValue);
     doorState = getDoorState();
-    client.publish(cover_door_base + "state", "open");
+    garageDoor.updateState(Cover::States::OPEN);
 
     if (openValue > closeValue || (closeValue - openValue) < 500)
         goto failed;
@@ -426,61 +263,49 @@ bool calibrateHallEffect(String extra = "") {
     return true;
 
 failed:
-    client.publish(binary_sensor_tamper_base + "state", "ON");
+    binarySensorTamper.updateState(BinarySensor::States::ON);
     lockDoor();
     activateDoor();
     return false;
 }
 
-void callback(char *topic, byte *payload, unsigned int length) {
-    char p[length +1];
+void coverDoorCallback(char *topic, uint8_t *payload, unsigned int length) {
+    char p[length + 1];
     memcpy(p, payload, length);
     p[length] = NULL;
     String message(p);
-    String extra = "";
-    String topic_str(topic);
-    
-    joint_print("Running callback of size " + String(length));
-    joint_print(topic);
-    joint_print(message);
-    
-    if (topic_str.startsWith(button_calibrate_base)) {
-        calibrateHallEffect();
-    } else if (topic_str.startsWith(button_toggle_light_base)) {
-        toggleOverheadLight();
-    } else if (topic_str.startsWith(lock_opener_base)) {
-        if (message.equalsIgnoreCase("LOCK"))
-            lockDoor();
-        else if (message.equalsIgnoreCase("UNLOCK"))
-            unlockDoor();
-        else
-            joint_print("lock: " + message);
-    } else if (topic_str.startsWith(cover_door_base)) {
-        if (message.equalsIgnoreCase("OPEN"))
-            openDoor();
-        else if (message.equalsIgnoreCase("CLOSE"))
-            closeDoor();
-        else if (message.equalsIgnoreCase("STOP"))
-            joint_print("STOP Not Supported");
-        else
-            joint_print("main: " + message);
-    } else {
-        joint_print("controller: " + message);
-    }
-}
-    
-void publish_all_discoveries() {
-    publish_disc_binary_sensor_tamper();
-    publish_disc_sensor_he_threshold();
-    publish_disc_sensor_he_value();
-    publish_disc_sensor_wall_state();
-    publish_disc_button_calibrate();
-    publish_disc_button_toggle_light();
-    publish_disc_lock_opener();
-    publish_disc_cover_door();
+
+    if (message.equalsIgnoreCase("OPEN"))
+        openDoor();
+    else if (message.equalsIgnoreCase("CLOSE"))
+        closeDoor();
+    else if (message.equalsIgnoreCase("STOP"))
+        joint_print("STOP Not Supported");
+    else
+        joint_print("main: " + message);
 }
 
+void buttonCalibrateCallback(char *topic, uint8_t *payload, unsigned int length) {
+    calibrateHallEffect();
+}
 
+void buttonToggleLightCallback(char *topic, uint8_t *payload, unsigned int length) {
+    toggleOverheadLight();
+}
+
+void lockOpenerCallback(char *topic, uint8_t *payload, unsigned int length) {
+    char p[length + 1];
+    memcpy(p, payload, length);
+    p[length] = NULL;
+    String message(p);
+
+    if (message.equalsIgnoreCase("LOCK"))
+        lockDoor();
+    else if (message.equalsIgnoreCase("UNLOCK"))
+        unlockDoor();
+    else
+        joint_print("lock: " + message);
+}
 
 void update_sensors() {
     String wall, thresh, val;
@@ -497,9 +322,9 @@ void update_sensors() {
     else
         wall = "Invalid";
     
-    client.publish(sensor_he_threshold_base + "state", thresh);
-    client.publish(sensor_he_value_base + "state", val);
-    client.publish(sensor_wall_state_base + "state", wall);
+    sensorHeThreshold.updateState(thresh);
+    sensorHeValue.updateState(val);
+    sensorWallState.updateState(wall);
 }
 
 ReqState getWallState() {
@@ -527,28 +352,35 @@ ReqState getWallState() {
 void init_door_state() {
     doorState = getDoorState();
     if (doorState == DoorState_Open)
-        client.publish(cover_door_base + "state", "open");
+        garageDoor.updateState(Cover::States::OPEN);
     else if (doorState == DoorState_Closed)
-        client.publish(cover_door_base + "state", "closed");
+        garageDoor.updateState(Cover::States::CLOSED);
     else
-        client.publish(cover_door_base + "state", "stopped");
-        
-    client.publish(binary_sensor_tamper_base + "state", "OFF"); // Initially clear to no tamper
+        garageDoor.updateState(Cover::States::STOPPED);
+    
+    binarySensorTamper.updateState(BinarySensor::States::OFF); // Initially clear to no tamper
 }
 
 bool mqtt_start(int retries = 5) {
-    client.connect("garaginator" + String(Time.now()), mqtt_username, mqtt_password);
+    client.connect(mqtt_username, mqtt_password);
     
     int i = 0;
     while (!client.isConnected() && i < retries) {
         delay(1000);
-        client.connect("garaginator" + String(Time.now()), mqtt_username, mqtt_password);
+        client.connect(mqtt_username, mqtt_password);
         i++;
     }
     
     if (client.isConnected()) {
-        publish_all_discoveries();
-        publish_availability();
+        client.registerEntity(&binarySensorTamper);
+        client.registerEntity(&sensorHeThreshold);
+        client.registerEntity(&sensorHeValue);
+        client.registerEntity(&sensorWallState);
+        client.registerEntity(&garageDoor);
+        client.registerEntity(&lockOpener);
+        client.registerEntity(&buttonToggleLight);
+        client.registerEntity(&buttonCalibrate);
+        client.publishAvailabilities();
         delay(100);
         update_sensors();
         init_door_state();
@@ -559,9 +391,6 @@ bool mqtt_start(int retries = 5) {
 
 void setup() {
     waitUntil(Particle.connected);
-    memset(serial_num, 0, sizeof(serial_num));
-    hal_get_device_serial_number(serial_num, HAL_DEVICE_SERIAL_NUMBER_SIZE, nullptr);
-    Particle.publish("he_threshold", String::format("%d", he_threshold));
     pinMode(LED_EY, OUTPUT);
     pinMode(LED_G , OUTPUT);
     pinMode(LED_Y, OUTPUT);
@@ -593,7 +422,7 @@ void setup() {
     // MQTT
     bool connected = mqtt_start();
     if (connected)
-        Serial.print("MQTT Connected");
+        joint_print("MQTT Connected Successfully");
 }
 
 bool ignore_next_tamper = false;
@@ -603,7 +432,7 @@ void loop() {
     ReqState state = getWallState();
     if (state != Invalid && state != curState) {
         ignore_next_tamper = true;
-        client.publish(binary_sensor_tamper_base + "state", "OFF");
+        binarySensorTamper.updateState(BinarySensor::States::OFF);
         switch (state) {
             case Unlocked:
                 unlockDoor();
@@ -633,7 +462,7 @@ void loop() {
     
     static int i = 0;
     if (i % 200 == 0) {
-        publish_availability();
+        client.publishAvailabilities();
         update_sensors();
         
         DoorState temp = getDoorState();
@@ -641,15 +470,15 @@ void loop() {
             if (ignore_next_tamper) {
                 ignore_next_tamper = false;
             } else {
-                client.publish(binary_sensor_tamper_base + "state", "ON");
+                binarySensorTamper.updateState(BinarySensor::States::ON);
             }
         }
         
         doorState = temp;
         if (doorState == DoorState_Open)
-            client.publish(cover_door_base + "state", "open");
+            garageDoor.updateState(Cover::States::OPEN);
         else if (doorState == DoorState_Closed)
-            client.publish(cover_door_base + "state", "closed");
+            garageDoor.updateState(Cover::States::CLOSED);
         
         i = 0;
     }
@@ -659,23 +488,4 @@ void loop() {
         mqtt_start();
         
     client.loop();
-    
-
-    // Wire.beginTransmission(DEV);
-    // Wire.write(0xC4);
-    // Wire.requestFrom(DEV, 1);
-    // int stop4 = Wire.read();
-    // Wire.endTransmission();
-    // delay(100);
-    // Particle.publish("stop4", String::format("%x", stop4));
-    // Wire.beginTransmission(DEV);
-    // Wire.write(0xC0);
-    // Wire.requestFrom(DEV, 3);
-    // int chipid = Wire.read();
-    // int dspsigm = Wire.read();
-    // int dspsigl = Wire.read();
-    // Wire.endTransmission();
-    // Particle.publish("chipid", String::format("%x", chipid));
-    // Particle.publish("dspsigm", String::format("%x", dspsigm));
-    // Particle.publish("dspsigl", String::format("%x", dspsigl));
 }
