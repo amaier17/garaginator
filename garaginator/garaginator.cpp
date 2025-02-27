@@ -47,9 +47,9 @@ void buttonToggleLightCallback(char *topic, uint8_t *payload, unsigned int lengt
 void buttonCalibrateCallback(char *topic, uint8_t *payload, unsigned int length);
 
 BinarySensor binarySensorTamper("tamper", "Tamper Sensor", client, dev, BinarySensor::DeviceClasses::tamper);
-Sensor sensorHeThreshold("heThreshold", "Hall Effect Threshold", client, dev);
-Sensor sensorHeValue("heValue", "Hall Effect Value", client, dev);
-Sensor sensorWallState("wallState", "Wall Button State", client, dev);
+Sensor sensorHeThreshold("heThreshold", "Hall Effect Threshold", client, dev, Sensor::DeviceClasses::None, "", Sensor::EntityCategories::diagnostic);
+Sensor sensorHeValue("heValue", "Hall Effect Value", client, dev, Sensor::DeviceClasses::None, "", Sensor::EntityCategories::diagnostic);
+Sensor sensorWallState("wallState", "Wall Button State", client, dev, Sensor::DeviceClasses::None, "", Sensor::EntityCategories::diagnostic);
 Cover garageDoor("door", "Garage Door", client, dev, coverDoorCallback, Cover::DeviceClasses::garage);
 Lock lockOpener("lockOpener", "Lock Opener", client, dev, lockOpenerCallback);
 Button buttonToggleLight("buttonToggleLight", "Toggle Light", client, dev, buttonToggleLightCallback);
