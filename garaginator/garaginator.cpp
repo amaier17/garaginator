@@ -31,7 +31,7 @@ int CTRL_COIL4 = D6;
 // -----------------------------------------
 
 // MQTT
-byte mqtt_server[] = {192, 168, 1, 3};
+byte mqtt_server[] = {192, 168, 0, 3};
 MQTT_HASS& client = MQTT_HASS::getInstance(mqtt_server, 1883);
 String mqtt_username = "mqtt_user";
 String mqtt_password = "syj?/nl%`n&X&M6I";
